@@ -43,7 +43,7 @@ func (l *NSQLookupd) Main() {
 	ctx := &Context{l}
 
 	//yao
-	l.grabHighPriorityTopics("TOPICS")
+	l.grabHighPriorityTopics(l.opts.HighPriorityTopicFile)
 
 	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {

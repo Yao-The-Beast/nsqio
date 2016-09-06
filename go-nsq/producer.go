@@ -60,6 +60,7 @@ type Producer struct {
 	behaviorDelegate interface{}
 
 	mtx sync.RWMutex
+
 }
 
 // ProducerTransaction is returned by the async publish methods
@@ -272,13 +273,13 @@ func (w *Producer) sendCommandAsync(cmd *Command, doneChan chan *ProducerTransac
 
 func (w *Producer) connect() error {
 
-	//yao wait for w to be nonempty
-	for w.addr == "" {
-		time.Sleep(1 * time.Millisecond)
-	}
-
 	w.guard.Lock()
 	defer w.guard.Unlock()
+	
+	//yao wait for w to be nonempty
+	for w.addr == "" {
+		time.Sleep(1 * time.Microsecond)
+	}
 
 	if atomic.LoadInt32(&w.stopFlag) == 1 {
 		return ErrStopped
@@ -525,6 +526,7 @@ func (w *Producer) queryLookupd(topic string) string{
 		}
 	}
 
+
 	var nsqdAddrs []string
 	for _, producer := range data.Producers {
 		broadcastAddress := producer.BroadcastAddress
@@ -532,7 +534,7 @@ func (w *Producer) queryLookupd(topic string) string{
 		joined := net.JoinHostPort(broadcastAddress, strconv.Itoa(port))
 		nsqdAddrs = append(nsqdAddrs, joined)
 	}
-	// apply filter
+
 	if discoveryFilter, ok := w.behaviorDelegate.(DiscoveryFilter); ok {
 		nsqdAddrs = discoveryFilter.Filter(nsqdAddrs)
 	}

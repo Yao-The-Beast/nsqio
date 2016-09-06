@@ -16,6 +16,9 @@ type Options struct {
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	TombstoneLifetime       time.Duration `flag:"tombstone-lifetime"`
 
+	//yao
+	HighPriorityTopicFile string `flag:"high-priority-topic-file"`
+
 	Logger logger
 }
 
@@ -34,5 +37,7 @@ func NewOptions() *Options {
 		TombstoneLifetime:       45 * time.Second,
 
 		Logger: log.New(os.Stderr, "[nsqlookupd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
+
+		HighPriorityTopicFile: "TOPICS",
 	}
 }

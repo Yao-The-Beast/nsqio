@@ -4,18 +4,22 @@ import (
   "log"
   "sync"
   "os"
+  "time"
   "github.com/nsqio/go-nsq"
+  "strconv"
 )
 
 func main() {
 
   wg := &sync.WaitGroup{}
-  wg.Add(10)
+  wg.Add(100)
 
   config := nsq.NewConfig()
   q, _ := nsq.NewConsumer(os.Args[1], "whatever", config)
   q.AddHandler(nsq.HandlerFunc(func(message *nsq.Message) error {
-      log.Printf("Got a message: %v", message)
+      currentTime := time.Now().UnixNano()
+      sentTime,_ := strconv.ParseInt(string(message.Body),10,64)
+      println("Latency", currentTime - sentTime)
       wg.Done()
       return nil
   }))

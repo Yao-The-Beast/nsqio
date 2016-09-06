@@ -134,7 +134,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		//return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 		//yao
 		//now we do a lookup in the registration table to find if there is a preset topic
-		//the preset topic in most time should be a high prioirty sort
+		//the preset topic in most time should be a high prioirty topic
 		//in that case we should return a NSQd which has a high priority
 		//if htere is no such high priority daemon, return error
 		
@@ -143,7 +143,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		if len(registration) == 0 {
 			return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 		}else if len(registration) > 1 {
-			println("YAO: DUPLICATE NAME OF HIGH PRIOIRTY TOPIC")
+			println("YAO WARNING: DUPLICATE NAME OF HIGH PRIOIRTY TOPIC")
 		}
 		//if the topic is among the high prioirty list
 		//get a daemon with the same prioirty of  the topic
@@ -155,20 +155,29 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 				tempPeerInfo = append(tempPeerInfo,p.peerInfo)
 			}
 		}
+		var channels []string
 		if len(tempPeerInfo) > 0 {
-				var channels []string
 				//s.ctx.nsqlookupd.logf("TOPIC: %s is handled by Daemon %d, Length is: %d", topicName, tempPeerInfo[0].TCPPort, len(tempPeerInfo))
 				return map[string]interface{}{
 					"channels":  channels,
 					"producers": tempPeerInfo,
 				}, nil
 		}
+		//if we dont have any high priority dameons, return nil
+		return nil, http_api.Err{404, "NO HIGH PRIORITY NSQds AVAILABLE"}
 	}
-
+	//we do find a NSQd serving the topic
+	//return that nsqd's info
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
 	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
 		s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	
+	//even if the topic is registered in the lookupd, it might be the case that no lookupds are currently holding it
+	if len(producers) == 0 {
+		return nil, http_api.Err{404, "NO NSQd IS HOLDING THE TOPIC"}
+	}
+
 	return map[string]interface{}{
 		"channels":  channels,
 		"producers": producers.PeerInfo(),
@@ -315,10 +324,23 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
 	//nodes := make([]*node, len(producers))
 	var nodes []*node
+
+	numHighPrioNSQds := 0
+	tolerantFlag := false
+	for _, q := range producers {
+		if q.peerInfo.DaemonPriority == "HIGH" {
+			numHighPrioNSQds++
+		}
+	}
+	//if all nsqds are high prio, we tolerant low prioirty topics to be served by the nsqds
+	if numHighPrioNSQds == len(producers) {
+		tolerantFlag = true
+	}
+
 	for _, p := range producers {
 		//yao
 		//we are not going to allow low processes to connect ot high prio daemons
-		if p.peerInfo.DaemonPriority == "HIGH"{
+		if !tolerantFlag && p.peerInfo.DaemonPriority == "HIGH"{
 			continue
 		}
 
@@ -348,7 +370,7 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 		})
 	}
 
-	println("/doNodes: Nodes Number ",len(nodes))
+
 
 	return map[string]interface{}{
 		"producers": nodes,
