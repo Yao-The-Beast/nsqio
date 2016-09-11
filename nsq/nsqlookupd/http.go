@@ -118,6 +118,7 @@ func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps htt
 	}, nil
 }
 
+
 func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
@@ -407,23 +408,39 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 //register topic priority
 //register_topic_priority topicName priority
 func (s *httpServer) doRegisterTopicPriority(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	
+	
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, priority, err := http_api.GetTopicPriorityArgs(reqParams)
+	topicName, err := http_api.GetTopicPriorityArgs(reqParams)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
 
-	s.ctx.nsqlookupd.logf("DB: adding topic (%s) to priority (%s)", topicName, priority)
+	s.ctx.nsqlookupd.logf("DB: adding topic (%s) to high priority", topicName)
 
 	//add topic to the priority list
 	key := Registration{"high_priority_topic",topicName,""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
+
+	//we need to check if the topic is currently served by any other daemons
+	//if there is a daemon and the daemon is low priority, we need to delete this registration so that next time
+	//the topic can be served by high priority nsqds
+	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
+	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout, s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	for _, p := range producers {
+		if p.peerInfo.DaemonPriority == "LOW" {
+			temp := Registration{"topic",topicName,""}
+			s.ctx.nsqlookupd.DB.RemoveRegistration(temp)
+		}
+	}
 	
-	return nil, nil
+	return map[string]interface{}{
+		"status": "success",
+	}, nil
 }
 
 

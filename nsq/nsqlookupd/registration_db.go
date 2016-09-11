@@ -242,3 +242,7 @@ func (pp Producers) PeerInfo() []*PeerInfo {
 	}
 	return results
 }
+
+func (s *httpServer) printHighPrioTopicList() {
+	s.ctx.nsqlookupd.DB.FindRegistrations("high_priority_topic","*","")
+}

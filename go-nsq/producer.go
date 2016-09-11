@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"math/rand"
+	//"math/rand"
 	"strings"
 	"errors"
 	"net"
@@ -21,6 +21,11 @@ type producerConn interface {
 	Connect() (*IdentifyResponse, error)
 	Close() error
 	WriteCommand(*Command) error
+}
+
+//yao
+type registerResponse struct {
+	Status  string    `json:"status"`
 }
 
 // Producer is a high-level type to publish to NSQ.
@@ -434,6 +439,7 @@ func (w *Producer) SetBehaviorDelegate(cb interface{}) {
 	w.behaviorDelegate = cb
 }
 
+//yao
 func (w *Producer) ConnectToNSQLookupd(addr string, topic string) error {
 	if atomic.LoadInt32(&w.stopFlag) == 1 {
 		return errors.New("producer stopped")
@@ -455,17 +461,46 @@ func (w *Producer) ConnectToNSQLookupd(addr string, topic string) error {
 
 	// if this is the first one, kick off the go loop
 	if numLookupd == 1 {
-		w.queryLookupd(topic)
-		w.wg.Add(1)
-		go w.lookupdLoop(topic)
+		w.addr = w.queryLookupd(topic)
+		//w.wg.Add(1)
+		//go w.lookupdLoop(topic)
+	}
+	return nil
+}
+
+//yao
+//administrative function //quite op actually
+//register high priority topic
+func (w *Producer) RegisterHighPriorityTopic(addr string, topic string) error {
+	
+	if atomic.LoadInt32(&w.stopFlag) == 1 {
+		return errors.New("producer stopped")
 	}
 
+	if err := validatedLookupAddr(addr); err != nil {
+		return err
+	}
+
+	for _, x := range w.lookupdHTTPAddrs {
+		if x == addr {
+			return nil
+		}
+	}
+	w.lookupdHTTPAddrs = append(w.lookupdHTTPAddrs, addr)
+
+	endpoint := w.nextLookupdEndpoint("register_topic_priority", topic)
+	w.log(LogLevelInfo, "querying nsqlookupd %s", endpoint)
+	var data registerResponse
+	err := apiRequestNegotiateV1("GET", endpoint, nil, &data)
+	if err != nil {
+		w.log(LogLevelError, "error querying nsqlookupd (%s) - %s", endpoint, err)
+	}
 	return nil
 }
 
 // return the next lookupd endpoint to query
 // keeping track of which one was last used
-func (w *Producer) nextLookupdEndpoint(command string, topic string) string {
+func (w *Producer) nextLookupdEndpoint(command string, data string) string {
 	w.mtx.RLock()
 	if w.lookupdQueryIndex >= len(w.lookupdHTTPAddrs) {
 		w.lookupdQueryIndex = 0
@@ -491,13 +526,20 @@ func (w *Producer) nextLookupdEndpoint(command string, topic string) string {
 			u.Path = "/lookup"
 		}
 		v, _ := url.ParseQuery(u.RawQuery)
-		v.Add("topic", topic)
+		v.Add("topic", data)
 		u.RawQuery = v.Encode()
 	} else if command == "nodes" {
 		if u.Path == "/" || u.Path == "" {
 			u.Path = "/nodes"
 		}
 		v, _ := url.ParseQuery(u.RawQuery)
+		u.RawQuery = v.Encode()
+	} else if command == "register_topic_priority" {
+		if u.Path == "/" || u.Path == "" {
+			u.Path = "/register_topic_priority"
+		}
+		v, _ := url.ParseQuery(u.RawQuery)
+		v.Add("topic",data)
 		u.RawQuery = v.Encode()
 	}
 
@@ -544,11 +586,6 @@ func (w *Producer) queryLookupd(topic string) string{
 
 	if len(nsqdAddrs) == 0 {
 		panic("NO DAEMON AVAILABLE")
-	}else if len(nsqdAddrs) > 1 {
-		println("YAO: MULTIPLE POSSIBLE DAEMONS! RANDOMLY PICK ONE")
-		s1 := rand.NewSource(time.Now().UnixNano())
-    	r1 := rand.New(s1)
-		address = nsqdAddrs[r1.Intn(len(nsqdAddrs))]
 	}else {
 		address = nsqdAddrs[0]
 	}

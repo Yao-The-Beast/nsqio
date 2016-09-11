@@ -179,7 +179,11 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
 			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
+			p.ctx.nsqlookupd.DB.RemoveRegistration(key)
+			
+			//p.ctx.nsqlookupd.DB.RemoveRegistration(key)
 		}
+
 	}
 
 	return []byte("OK"), nil

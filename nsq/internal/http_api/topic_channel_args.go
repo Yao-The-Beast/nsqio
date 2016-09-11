@@ -34,24 +34,15 @@ func GetTopicChannelArgs(rp getter) (string, string, error) {
 
 //yao
 //get topic priority parameters
-func GetTopicPriorityArgs(rp getter) (string, string, error) {
+func GetTopicPriorityArgs(rp getter) (string, error) {
 	topicName, err := rp.Get("topic")
 	if err != nil {
-		return "", "", errors.New("MISSING_ARG_TOPIC")
+		return "", errors.New("MISSING_ARG_TOPIC")
 	}
 
 	if !protocol.IsValidTopicName(topicName) {
-		return "", "", errors.New("INVALID_ARG_TOPIC")
+		return "", errors.New("INVALID_ARG_TOPIC")
 	}
 
-	priority, err := rp.Get("priority")
-	if err != nil {
-		return "", "", errors.New("MISSING_ARG_PRIOIRTY")
-	}
-
-	if !protocol.IsValidPriority(priority) {
-		return "", "", errors.New("INVALID_ARG_PRIORITY")
-	}
-
-	return topicName, priority, nil
+	return topicName, nil
 }
