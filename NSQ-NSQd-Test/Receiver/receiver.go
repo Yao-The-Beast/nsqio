@@ -19,7 +19,7 @@ func ReceiveMessage(topic string, channel string, message []byte, Latencies *[]f
 	then, _ := binary.Varint(message)
 	if then != 0 {
 		*Latencies = append(*Latencies, (float32(now-then))/1000/1000)
-		if channel == "0" {
+		if channel == "0#ephemeral" {
 			//log.Printf("%d \n", handler.messageCounter);
 			b:=make([]byte,8)
 			binary.PutVarint(b, (now-then))
@@ -45,8 +45,8 @@ func ReceiveMessage(topic string, channel string, message []byte, Latencies *[]f
 
 func consumer(topic string, channel string) {
     
-   // topic += "#ephemeral"
-   // channel += "#ephemeral"
+    topic += "#ephemeral"
+    channel += "#ephemeral"
 
    // wg := &sync.WaitGroup{}
    // wg.Add(100)

@@ -175,13 +175,29 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 			}
 		}
 
-		key := Registration{"topic", topic, ""}
-		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
-			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
-				client, "topic", topic, "")
-			p.ctx.nsqlookupd.DB.RemoveRegistration(key)
+		// key := Registration{"topic", topic, ""}
+		// if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
+		// 	p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+		// 		client, "topic", topic, "")
 			
-			//p.ctx.nsqlookupd.DB.RemoveRegistration(key)
+		// 	//yao
+		// 	if strings.HasSuffix(topic, "#ephemeral") {
+		// 		p.ctx.nsqlookupd.DB.RemoveRegistration(key)
+		// 	}		
+		// 	//
+		// }
+		//yao
+		for _, r := range p.ctx.nsqlookupd.DB.FindRegistrations("topic", topic, "*") {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+				p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+					client, "topic", topic, r.SubKey)	
+					
+			}		
+			if strings.HasSuffix(topic, "#ephemeral") {
+				p.ctx.nsqlookupd.logf("DB: client(%s) REMOVE category:%s key:%s subkey:%s",
+					client, "topic", topic, r.SubKey)	
+				p.ctx.nsqlookupd.DB.RemoveRegistration(r)
+			} 
 		}
 
 	}

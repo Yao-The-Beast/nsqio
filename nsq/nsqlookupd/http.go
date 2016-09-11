@@ -43,7 +43,9 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/priority_nodes", http_api.Decorate(s.doPriorityNodes,log,http_api.NegotiateVersion))
 	// /register_topic_priority
 	router.Handle("GET", "/register_topic_priority", http_api.Decorate(s.doRegisterTopicPriority,log,http_api.NegotiateVersion))
-
+	// /unregister_topic_priority
+	router.Handle("GET", "/unregister_topic_priority", http_api.Decorate(s.doUnregisterTopicPriority,log,http_api.NegotiateVersion))	
+	
 	// only v1
 	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
 	router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
@@ -178,7 +180,6 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if len(producers) == 0 {
 		return nil, http_api.Err{404, "NO NSQd IS HOLDING THE TOPIC"}
 	}
-
 	return map[string]interface{}{
 		"channels":  channels,
 		"producers": producers.PeerInfo(),
@@ -406,7 +407,7 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 
 //yao
 //register topic priority
-//register_topic_priority topicName priority
+//register_topic_priority topicName 
 func (s *httpServer) doRegisterTopicPriority(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	
 	
@@ -422,22 +423,116 @@ func (s *httpServer) doRegisterTopicPriority(w http.ResponseWriter, req *http.Re
 
 	s.ctx.nsqlookupd.logf("DB: adding topic (%s) to high priority", topicName)
 
-	//add topic to the priority list
+	//if there has already had such topic in the high prio list, return
+	if len(s.ctx.nsqlookupd.DB.FindRegistrations("high_priority_topic",topicName,"")) > 0 {
+			return map[string]interface{}{
+			"status": "success",
+		}, nil
+	}
+	//else add it
 	key := Registration{"high_priority_topic",topicName,""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
-
+	
 	//we need to check if the topic is currently served by any other daemons
-	//if there is a daemon and the daemon is low priority, we need to delete this registration so that next time
+	//if there is a daemon and the daemon is low priority, we need to modify this registration so that next time
 	//the topic can be served by high priority nsqds
+	//set the #inactive flag to make the currently active producer sleep
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
 	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout, s.ctx.nsqlookupd.opts.TombstoneLifetime)
 	for _, p := range producers {
 		if p.peerInfo.DaemonPriority == "LOW" {
-			temp := Registration{"topic",topicName,""}
-			s.ctx.nsqlookupd.DB.RemoveRegistration(temp)
+			previousReg := Registration{"topic",topicName,""}
+			currentReg := Registration{"topic",topicName,"#inactive"}
+			//s.ctx.nsqlookupd.DB.RemoveRegistration(previousReg)
+			s.ctx.nsqlookupd.DB.RemoveProducer(previousReg, p.peerInfo.id)
+			s.ctx.nsqlookupd.DB.AddProducer(currentReg, p)
 		}
 	}
-	
+	//find an inactive correpsonding high priority nsqd
+	//switch its flag and set to active
+	producers = s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "#inactive")
+	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout, s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	if len(producers) == 0 || len(producers) == len(findNSQds(producers,"LOW")) {
+		//there is no high prio nsqds having experience serving this topic
+		//just delete the registration, as the new nsqd will register it 
+		reg := Registration{"topic", topicName, ""}
+		s.ctx.nsqlookupd.DB.RemoveRegistration(reg)
+	} else {
+		for _, p := range producers {
+			if p.peerInfo.DaemonPriority == "HIGH" {
+				previousReg := Registration{"topic",topicName,"#inactive"}
+				currentReg := Registration{"topic",topicName,""}
+				s.ctx.nsqlookupd.DB.RemoveProducer(previousReg, p.peerInfo.id)
+				s.ctx.nsqlookupd.DB.AddProducer(currentReg, p)
+			}
+		}
+	}
+	return map[string]interface{}{
+		"status": "success",
+	}, nil
+}
+
+//yao
+//unregister topic priority
+//unregister_topic_priority topicName 
+func (s *httpServer) doUnregisterTopicPriority(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+		
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName, err := http_api.GetTopicPriorityArgs(reqParams)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	s.ctx.nsqlookupd.logf("DB: deleting topic (%s) from high priority", topicName)
+
+	//if there is no such topic in the high prio list, return
+	if len(s.ctx.nsqlookupd.DB.FindRegistrations("high_priority_topic",topicName,"")) == 0 {
+			return map[string]interface{}{
+			"status": "success",
+		}, nil
+	}
+	//else, remove it
+	key := Registration{"high_priority_topic",topicName,""}
+	s.ctx.nsqlookupd.DB.RemoveRegistration(key)
+
+	//we need to check if the topic is currently served by any other daemons
+	//if there is a daemon and the daemon is high priority, we need to modify this registration so that next time
+	//the topic can be served by high priority nsqds
+	//set the #inactive flag to make the currently active producer inactive
+	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
+	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout, s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	for _, p := range producers {
+		if p.peerInfo.DaemonPriority == "HIGH" {
+			previousReg := Registration{"topic",topicName,""}
+			currentReg := Registration{"topic",topicName,"#inactive"}
+			s.ctx.nsqlookupd.DB.RemoveProducer(previousReg, p.peerInfo.id)
+			s.ctx.nsqlookupd.DB.AddProducer(currentReg, p)
+		}
+	}
+	//find an inactive correpsonding low priority nsqd
+	//switch its flag and set to active
+	producers = s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "#inactive")
+	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout, s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	if len(producers) == 0 || len(producers) == len(findNSQds(producers,"HIGH")) {
+		//there is no low prio nsqds having experience serving this topic
+		//just delete the registration, as the new nsqd will register it 
+		reg := Registration{"topic", topicName, ""}
+		s.ctx.nsqlookupd.DB.RemoveRegistration(reg)
+	} else {
+		for _, p := range producers {
+			if p.peerInfo.DaemonPriority == "LOW" {
+				previousReg := Registration{"topic",topicName,"#inactive"}
+				currentReg := Registration{"topic",topicName,""}
+				s.ctx.nsqlookupd.DB.RemoveProducer(previousReg, p.peerInfo.id)
+				s.ctx.nsqlookupd.DB.AddProducer(currentReg, p)
+			}
+		}
+	}
+
 	return map[string]interface{}{
 		"status": "success",
 	}, nil
@@ -449,4 +544,14 @@ func (s *httpServer) doRegisterTopicPriority(w http.ResponseWriter, req *http.Re
 //havent finished this part
 func (s *httpServer) doPriorityNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	return nil, nil
+}
+
+func findNSQds(producers Producers, priority string) (Producers) {
+	var outputProducers Producers
+	for _, p := range producers {
+		if p.peerInfo.DaemonPriority == priority {
+			outputProducers = append(outputProducers, p)
+		}
+	}
+	return outputProducers
 }

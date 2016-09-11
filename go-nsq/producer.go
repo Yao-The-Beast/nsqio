@@ -498,6 +498,35 @@ func (w *Producer) RegisterHighPriorityTopic(addr string, topic string) error {
 	return nil
 }
 
+//yao
+//administrative function 
+//unregister high priority topic
+func (w *Producer) UnregisterHighPriorityTopic(addr string, topic string) error {
+	if atomic.LoadInt32(&w.stopFlag) == 1 {
+		return errors.New("producer stopped")
+	}
+
+	if err := validatedLookupAddr(addr); err != nil {
+		return err
+	}
+
+	for _, x := range w.lookupdHTTPAddrs {
+		if x == addr {
+			return nil
+		}
+	}
+	w.lookupdHTTPAddrs = append(w.lookupdHTTPAddrs, addr)
+
+	endpoint := w.nextLookupdEndpoint("unregister_topic_priority", topic)
+	w.log(LogLevelInfo, "querying nsqlookupd %s", endpoint)
+	var data registerResponse
+	err := apiRequestNegotiateV1("GET", endpoint, nil, &data)
+	if err != nil {
+		w.log(LogLevelError, "error querying nsqlookupd (%s) - %s", endpoint, err)
+	}
+	return nil
+}
+
 // return the next lookupd endpoint to query
 // keeping track of which one was last used
 func (w *Producer) nextLookupdEndpoint(command string, data string) string {
@@ -541,6 +570,14 @@ func (w *Producer) nextLookupdEndpoint(command string, data string) string {
 		v, _ := url.ParseQuery(u.RawQuery)
 		v.Add("topic",data)
 		u.RawQuery = v.Encode()
+	} else if command == "unregister_topic_priority" {
+		if u.Path == "/" || u.Path == "" {
+			u.Path = "/unregister_topic_priority"
+		}
+		v, _ := url.ParseQuery(u.RawQuery)
+		v.Add("topic",data)
+		u.RawQuery = v.Encode()
+
 	}
 
 	return u.String()

@@ -246,3 +246,11 @@ func (pp Producers) PeerInfo() []*PeerInfo {
 func (s *httpServer) printHighPrioTopicList() {
 	s.ctx.nsqlookupd.DB.FindRegistrations("high_priority_topic","*","")
 }
+
+/*
+Yao
+important Note
+when a producer has a registration looks like ("topic", topicName, "#inactive")
+it means that the producer was serving the topic, but now another nsqd is serving it
+we could make it once again active by tweaking the "#inactive" -> "#active" flag
+*/

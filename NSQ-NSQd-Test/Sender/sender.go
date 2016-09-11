@@ -13,8 +13,8 @@ func producer(topic string, channel string) {
     messageSize := 1000
     messageNum := 1000
 
-    //topic += "#ephemeral"
-    //channel += "#ephemeral"
+    topic += "#ephemeral"
+    channel += "#ephemeral"
 
     config := nsq.NewConfig()
     w, _ := nsq.NewProducer("", config)
