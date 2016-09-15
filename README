@@ -30,18 +30,21 @@ go run admin_register.go TOPIC_NAME
 go run admin_unregister.go TOPIC_NAME
 
 
-Some Defects
+Some Defects (Assume consumers and producers all connect to the lookupd, not nsqds)
 
-1. Consumers will panic if there are no nsqds currently serving their interested topics. 
-They dont know which nsqd to connect to. This bug comes with its original code (has nothing to do with our implementatio)
+1. 
+Consumers will panic if there are no nsqds currently serving their interested topics. 
+They dont know which nsqd to connect to. This bug comes with its original code (has nothing to do with our implementation)
+So, please run producer first, then consumer. For producers, just send a hello message and sleep for a few seconds to wait for consumer.
 
-2. While we dynamically register and unregister high prio topics, the ongoing connection will not switch between nsqds.
+2.
+While we dynamically register and unregister high prio topics, the active producers will not change their nsqds.
 For example: 
 Producer_1 is publishing high_prio_topic_1 to NSQd_high.  
 Consumer_1 is subscribing high_prio_topic_1 from NSQd_high.
-Ff we unregister topic_1 (set it to low prio topic), producer_1 and consumer_1 are still connecting to NSQd_high even though topic_1 is no longer high prio.
-However, later, producer_2 and consumer_2 will connect to the NSQd_low if they are both interested in topic_1. 
-So in other words, the traffic routing is not that dynamic. The responsible nsqd will change between connections but remain consistent in one single pub-sub.
+If we unregister topic_1 (set it to low prio topic), producer_1 is still connecting to NSQd_high even though topic_1 is no longer high prio.
+However, for a later publication, producer_2 will correctly connect to the NSQd_low if it is publishing topic_1. 
+So in other words, the traffic routing is not that dynamic. 
 
 Solution:
 Uncomment two lines of code in nsqio/go-nsq/producer.go
