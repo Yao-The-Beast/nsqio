@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	//"math/rand"
+	"math/rand"
 	"strings"
 	"errors"
 	"net"
@@ -636,26 +636,25 @@ func (w *Producer) queryLookupd(topic string) string{
 func (w *Producer) lookupdLoop(topic string) {
 	// add some jitter so that multiple consumers discovering the same topic,
 	// when restarted at the same time, dont all connect at once.
-	jitter := time.Millisecond * 2
+	s1 := rand.NewSource(time.Now().UnixNano())
+    r1 := rand.New(s1)
+	jitter := time.Millisecond * (time.Duration(r1.Intn(100) + 500))
 	var ticker *time.Ticker
 
 	select {
-	case <-time.After(jitter):
-	case <-w.exitChan:
-		goto exit
+		case <-time.After(jitter):
+		case <-w.exitChan:
+			goto exit
 	}
 
 	//ticker = time.NewTicker(r.config.LookupdPollInterval)
-	ticker = time.NewTicker(time.Second * 2)
+	ticker = time.NewTicker(jitter)
 	for {
 		select {
-		case <-ticker.C:
-			addr := w.queryLookupd(topic)
-			w.mtx.Lock()
-			w.addr = addr
-			w.mtx.Unlock()
-		case <-w.exitChan:
-			goto exit
+			case <-ticker.C:
+				w.addr = w.queryLookupd(topic)
+			case <-w.exitChan:
+				goto exit
 		}
 	}
 

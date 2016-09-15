@@ -1,0 +1,47 @@
+For nsq folder: make && make install to generate executable for nsqd & nsqlookupd.
+In nsq/build, run lookupd.sh to boot up lookupd.
+In nsq/build, there are several folders, including nsqd_high, nsqd_low, etc.
+Copy the nsqd executable into these folders. 
+Inside nsqd_high, nsqd_low folders, there is nsqd.sh which is used to boot up nsqds of different priorities. 
+One thing to modify (A MUST) is the broadcast-address parameter in these bash files must be changed to the appropriate one.
+One can run the host.go in nsqio/NSQ-NSQd-Test/host.go to get the correct broadcast address.
+Without configuring broadcast address correctly, it is impossible to connect to the lookupds.
+
+For NSQ-NSQd-Test folder, the files in there are for test purpose.
+Receiver and Sender folders contain producer and consumer
+go run receiver.go NUMBER_OF_TOPICS
+go run sender.go NUMBER_OF_TOPICS
+All producer and consumers are connect to the same lookupd
+Please configure the address of lookupd correctly in both producer/consumer code.
+!!!!!!!!!!!!!!!!WARNING: Please run sender.go first, then run receiver.go !!!!!!!
+The reason is that consumer is going to panic when it realizes that there is no NSQd currently serving the topic.
+By making producer sends out a hello msg first, the Lookupd will return the address of the responsible nsqd to the consumer.
+The receiver will stop after receiving 1,000 msgs from the producers and output a latency file.
+
+NSQ-NSQd-Test/admin folder
+In this folder, there are two go apps. One is to register high priority topics. Another is to unregister high priority topics.
+go run admin_register.go TOPIC_NAME
+go run admin_unregister.go TOPIC_NAME
+
+
+Some Defects
+
+1. Consumers will panic if there are no nsqds currently serving their interested topics. 
+They dont know which nsqd to connect to. This bug comes with its original code (has nothing to do with our implementatio)
+
+2. While we dynamically register and unregister high prio topics, the onging connection will not change its two endpoints.
+For example: 
+Producer_1 is publishing high_prio_topic_1 to NSQd_high. And consumer_1 is subscribing high_prio_topic_1 from NSQd_high.
+if we unregister topic_1 (set it to low prio topic), producer_1 and consumer_1 are still connecting to NSQd_high even though topic_1 is no longer high prio.
+However, producer_2 and consumer_2 will connect to the NSQd_low if they are both interested in topic_1. 
+So in other world, the traffic routing is not that dynamic. The destination (both publishing and subscribing) will change between connections but remain consistent in one single connection.
+
+Solution:
+Uncomment two lines of code in nsqio/go-nsq/producer.go
+w.wg.add(1); 
+go w.lookupdloop(); 
+
+Explanation:
+The client producer library will spawn a go routine that periodically sends http request to lookupd to check which nsqd is currently responsible for the topic. This method can resolve the discrepency described above.
+Yet, I personally dont like it as it is quite brutal and takes a lot of resources. But to find a better solution, we have to modify the whole NSQlookupd code to make lookupd initiate the connection, which will be really tiring.
+
