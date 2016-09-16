@@ -43,11 +43,12 @@ func ReceiveMessage(topic string, channel string, message []byte, Latencies *[]f
 	}
 }
 
-func consumer(topic string, channel string) {
-    
-    topic += "#ephemeral"
-    channel += "#ephemeral"
+func consumer(topic string, channel string, flag string) {
 
+    if flag == "true" { 
+        topic += "#ephemeral"
+        channel += "#ephemeral"
+    }
    // wg := &sync.WaitGroup{}
    // wg.Add(100)
 
@@ -76,7 +77,7 @@ func main() {
     consumersNum,_ := strconv.Atoi(os.Args[1])
 
     for i := 0; i < consumersNum; i++ {
-        go consumer(strconv.Itoa(i), strconv.Itoa(i))
+        go consumer(strconv.Itoa(i), strconv.Itoa(i), os.Args[2])
     }
 
     time.Sleep(60 * time.Second)

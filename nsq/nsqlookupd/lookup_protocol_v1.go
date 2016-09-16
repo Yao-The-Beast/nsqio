@@ -192,12 +192,14 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 				p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 					client, "topic", topic, r.SubKey)	
 					
-			}		
+			}
+			/*		
 			if strings.HasSuffix(topic, "#ephemeral") {
 				p.ctx.nsqlookupd.logf("DB: client(%s) REMOVE category:%s key:%s subkey:%s",
 					client, "topic", topic, r.SubKey)	
 				p.ctx.nsqlookupd.DB.RemoveRegistration(r)
 			} 
+			*/
 		}
 
 	}

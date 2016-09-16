@@ -178,7 +178,6 @@ func (s *httpServer) doProducerLookup(w http.ResponseWriter, req *http.Request, 
 		}
 	}
 
-
 	registration := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	if len(registration) == 0 || okFlag == false {
 		//return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}

@@ -9,18 +9,20 @@ import (
   "strconv"
 )
 
-func producer(topic string, channel string) {
+func producer(topic string, channel string, flag string) {
     messageSize := 1000
     messageNum := 1000
 
-    topic += "#ephemeral"
-    channel += "#ephemeral"
-
+    if flag == "ephemeral" {
+        topic += "#ephemeral"
+        channel += "#ephemeral"
+    }
+    
     config := nsq.NewConfig()
     w, _ := nsq.NewProducer("", config)
     _ = w.ConnectToNSQLookupd("127.0.0.1:4161",topic)
 
-    i := 0
+    
 
     //hello message
     b := make([]byte, messageSize)
@@ -28,6 +30,7 @@ func producer(topic string, channel string) {
     w.PublishAsync(topic, b , nil)
     time.Sleep(20 * time.Second)
 
+    i := 1
     for i < messageNum {
         b = make([]byte, messageSize)
         binary.PutVarint(b, time.Now().UnixNano())
@@ -49,7 +52,7 @@ func main() {
     producersNum,_ := strconv.Atoi(os.Args[1])
 
     for i := 0; i < producersNum; i++ {
-        go producer(strconv.Itoa(i), strconv.Itoa(i))
+        go producer(strconv.Itoa(i), strconv.Itoa(i), os.Args[2])
     }
 
     time.Sleep(60 * time.Second)

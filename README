@@ -1,6 +1,7 @@
 API Changes:
 Producer Side
 //to find a nsqd for a certain topic
+producer1, _ := nsq.NewProducer("", config)
 err := producer1.ConnectToNSQLookupd(Lookupd_Address, Topic1)
 err = producer1.Publish(Topic1, MessageBody)
 
@@ -61,15 +62,14 @@ In nsq/build, there are several folders, including nsqd_high, nsqd_low, etc.
 Copy the nsqd executable into these folders. 
 Inside nsqd_high, nsqd_low folders, nsqd.sh is used to boot up nsqds of different priorities. 
 WARNING!!!!!!!!
-Broadcast-address parameter in these bash files must be changed to the appropriate one.
+Broadcast-address parameter in nsqd.sh must be set to the ip address the nsqd is listening to.
 WARNING END!!!!!!
-Run nsqio/NSQ-NSQd-Test/host.go to get the correct broadcast address of the machine.
-Without configuring broadcast address correctly, it is impossible to connect to the lookupds.
+
 
 For NSQ-NSQd-Test folder, the files in there are for test purpose.
 Receiver and Sender folders contain producer and consumer
-go run receiver.go NUMBER_OF_TOPICS
-go run sender.go NUMBER_OF_TOPICS
+go run receiver.go NUMBER_OF_TOPICS ephemeral/""
+go run sender.go NUMBER_OF_TOPICS ephemeral/""
 All producer and consumers should connect to the same lookupd
 Please configure the address of lookupd correctly in both producer/consumer code.
 WARNING!!!
