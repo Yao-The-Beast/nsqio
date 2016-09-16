@@ -1,3 +1,60 @@
+API Changes:
+Producer Side
+//to find a nsqd for a certain topic
+err := producer1.ConnectToNSQLookupd(Lookupd_Address, Topic1)
+err = producer1.Publish(Topic1, MessageBody)
+
+Adminstrator Side:
+//register or unregister a certain topic in lookupd as a high prio topic
+w, _ := nsq.NewProducer("", config)
+err := w.RegisterHighPriorityTopic(Lookupd Address, topicName)
+err = w.UnregisterHighPriorityTopic(Lookupd Address, topicName)
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+Some Defects (Assume consumers and producers all connect to the lookupd, not nsqds)
+1. 
+Consumers will panic if there are no nsqds currently serving their interested topics. 
+They dont know which nsqd to connect to. This bug comes with its original code (has nothing to do with our implementation)
+So, please run producer first, then consumer. For producers, just send a hello message and sleep for a few seconds to wait for consumer.
+
+2.
+While we dynamically register and unregister high prio topics, the active producers will not change their nsqds.
+For example: 
+Producer_1 is publishing high_prio_topic_1 to NSQd_high.  
+Consumer_1 is subscribing high_prio_topic_1 from NSQd_high.
+If we unregister topic_1 (set it to low prio topic), producer_1 is still connecting to NSQd_high even though topic_1 is no longer high prio.
+However, for a later publication, producer_2 will correctly connect to the NSQd_low if it is publishing topic_1. 
+So in other words, the traffic routing is not that dynamic. 
+
+Solution:
+Uncomment two lines of code in nsqio/go-nsq/producer.go
+w.wg.add(1); 
+go w.lookupdloop(); 
+
+Explanation:
+The client producer library will spawn a go routine that periodically sends http request to lookupd to check which nsqd is currently responsible for the topic. 
+This method can resolve the discrepency described above.
+Yet, I personally dont like it as it is quite brutal and takes a lot of resources. 
+But to find a better solution, we have to modify the whole NSQlookupd code to make lookupd initiate the connection, which will be really tiring.
+
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+Some Big Changes !!
+Each producer object can only publish one topic.
+So if you want to publish two topics, you need to instance two producers
+
+producer1, _ := nsq.NewProducer("", config)
+producer2, _ := nsq.NewProducer("", config)
+ _ = producer1.ConnectToNSQLookupd(Lookupd_Address, Topic1)
+ _ = producer2.ConnectToNSQLookupd(Lookupd_Address, Topic2)
+err := producer1.Publish(Topic1, MessageBody)
+err := producer2.Publish(Topic2, MessageBody)
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+
 For nsq folder: make && make install to generate executable for nsqd & nsqlookupd.
 In nsq/build, run lookupd.sh to boot up lookupd.
 In nsq/build, there are several folders, including nsqd_high, nsqd_low, etc.
@@ -30,30 +87,4 @@ go run admin_register.go TOPIC_NAME
 go run admin_unregister.go TOPIC_NAME
 
 
-Some Defects (Assume consumers and producers all connect to the lookupd, not nsqds)
-
-1. 
-Consumers will panic if there are no nsqds currently serving their interested topics. 
-They dont know which nsqd to connect to. This bug comes with its original code (has nothing to do with our implementation)
-So, please run producer first, then consumer. For producers, just send a hello message and sleep for a few seconds to wait for consumer.
-
-2.
-While we dynamically register and unregister high prio topics, the active producers will not change their nsqds.
-For example: 
-Producer_1 is publishing high_prio_topic_1 to NSQd_high.  
-Consumer_1 is subscribing high_prio_topic_1 from NSQd_high.
-If we unregister topic_1 (set it to low prio topic), producer_1 is still connecting to NSQd_high even though topic_1 is no longer high prio.
-However, for a later publication, producer_2 will correctly connect to the NSQd_low if it is publishing topic_1. 
-So in other words, the traffic routing is not that dynamic. 
-
-Solution:
-Uncomment two lines of code in nsqio/go-nsq/producer.go
-w.wg.add(1); 
-go w.lookupdloop(); 
-
-Explanation:
-The client producer library will spawn a go routine that periodically sends http request to lookupd to check which nsqd is currently responsible for the topic. 
-This method can resolve the discrepency described above.
-Yet, I personally dont like it as it is quite brutal and takes a lot of resources. 
-But to find a better solution, we have to modify the whole NSQlookupd code to make lookupd initiate the connection, which will be really tiring.
 
