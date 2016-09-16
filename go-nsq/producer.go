@@ -624,7 +624,17 @@ func (w *Producer) queryLookupd(topic string) string{
 	if len(nsqdAddrs) == 0 {
 		panic("NO DAEMON AVAILABLE")
 	}else {
-		address = nsqdAddrs[0]
+		i := 0
+		for _, thisProducer := range data.Producers {
+			hostName := thisProducer.Hostname
+			myHostName,_ := os.Hostname()
+			if myHostName == hostName {
+				println("YAO: NSQd Hostname is: ", hostName)
+				address = nsqdAddrs[i]
+				break
+			}
+			i++
+		}	
 	}
 	//println(data.Producers[0].BroadcastAddress)
 	println("YAO: NSQd ADDRESS is: ", address)
