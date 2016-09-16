@@ -550,12 +550,14 @@ func (w *Producer) nextLookupdEndpoint(command string, data string) string {
 		panic(err)
 	}
 
-	if command == "lookup" {
+	if command == "producer_lookup" {
 		if u.Path == "/" || u.Path == "" {
-			u.Path = "/lookup"
+			u.Path = "/producer_lookup"
 		}
 		v, _ := url.ParseQuery(u.RawQuery)
 		v.Add("topic", data)
+		hostname, _ := os.Hostname()
+		v.Add("hostname", hostname)
 		u.RawQuery = v.Encode()
 	} else if command == "nodes" {
 		if u.Path == "/" || u.Path == "" {
@@ -588,7 +590,7 @@ func (w *Producer) queryLookupd(topic string) string{
 	//first lookup the topic
 	//if there is no such topic registered in the nsqlookupd
 	//find a random nsqd and connects to it
-	endpoint := w.nextLookupdEndpoint("lookup", topic)
+	endpoint := w.nextLookupdEndpoint("producer_lookup", topic)
 	w.log(LogLevelInfo, "querying nsqlookupd %s", endpoint)
 	var data lookupResp
 	err := apiRequestNegotiateV1("GET", endpoint, nil, &data)
@@ -635,6 +637,10 @@ func (w *Producer) queryLookupd(topic string) string{
 			}
 			i++
 		}	
+	}
+	if address == "" {
+		println("YAO: NO OTHER CHOICE, Randomly Pick One")
+		address = nsqdAddrs[0]
 	}
 	//println(data.Producers[0].BroadcastAddress)
 	println("YAO: NSQd ADDRESS is: ", address)

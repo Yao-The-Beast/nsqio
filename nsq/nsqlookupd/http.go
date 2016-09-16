@@ -45,7 +45,9 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/register_topic_priority", http_api.Decorate(s.doRegisterTopicPriority,log,http_api.NegotiateVersion))
 	// /unregister_topic_priority
 	router.Handle("GET", "/unregister_topic_priority", http_api.Decorate(s.doUnregisterTopicPriority,log,http_api.NegotiateVersion))	
-	
+	//lookup for the producers
+	router.Handle("GET", "/producer_lookup", http_api.Decorate(s.doProducerLookup,log,http_api.NegotiateVersion))	
+
 	// only v1
 	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
 	router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
@@ -134,6 +136,51 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 
 	registration := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	if len(registration) == 0 {
+		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+	}
+
+	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
+	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
+	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
+		s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	return map[string]interface{}{
+		"channels":  channels,
+		"producers": producers.PeerInfo(),
+	}, nil
+}
+
+
+
+func (s *httpServer) doProducerLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+
+	//check if the we need to return the address of another blank nsqd incase the producer and the active nsqd is not on the same host
+	okFlag := false
+	senderHostname, err := reqParams.Get("hostname")
+	if err != nil {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+	tempProducers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
+	tempProducers = tempProducers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
+		s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	for _, thisProducer := range tempProducers {
+		if thisProducer.peerInfo.Hostname == senderHostname {
+			okFlag = true
+			break
+		}
+	}
+
+
+	registration := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "")
+	if len(registration) == 0 || okFlag == false {
 		//return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 		//yao
 		//now we do a lookup in the registration table to find if there is a preset topic
