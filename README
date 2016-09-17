@@ -11,6 +11,20 @@ w, _ := nsq.NewProducer("", config)
 err := w.RegisterHighPriorityTopic(Lookupd Address, topicName)
 err = w.UnregisterHighPriorityTopic(Lookupd Address, topicName)
 
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+Some Big Changes !!
+Each producer object can only publish one topic.
+So if you want to publish two topics, you need to instance two producers
+
+producer1, _ := nsq.NewProducer("", config)
+producer2, _ := nsq.NewProducer("", config)
+ _ = producer1.ConnectToNSQLookupd(Lookupd_Address, Topic1)
+ _ = producer2.ConnectToNSQLookupd(Lookupd_Address, Topic2)
+err := producer1.Publish(Topic1, MessageBody)
+err := producer2.Publish(Topic2, MessageBody)
+
 ///////////////////////////////////////////////////////////////////////////////////////
 
 Some Defects (Assume consumers and producers all connect to the lookupd, not nsqds)
@@ -20,6 +34,16 @@ They dont know which nsqd to connect to. This bug comes with its original code (
 So, please run producer first, then consumer. For producers, just send a hello message and sleep for a few seconds to wait for consumer.
 
 2.
+When consumer is connected to the lookupd, the change of topic priority might cause messages from a previous producer get lost.
+For example:
+NSQd1 publishes a certain topic topic1. 
+Then our admin changes the priority of the topic1 during this interval
+Later NSQd2 publishes the same topic topic1.
+Then Consumer1 subscribe to the topic1. Yet it can only receive the messages from NSQd2 as NSQd1 has been labeled as inactive for that topic.
+
+So to avoid this kind of messages lost, please register or unregister topics when there are no currently ONGOING message transfer of that topic.
+
+3.
 While we dynamically register and unregister high prio topics, the active producers will not change their nsqds.
 For example: 
 Producer_1 is publishing high_prio_topic_1 to NSQd_high.  
@@ -38,20 +62,6 @@ The client producer library will spawn a go routine that periodically sends http
 This method can resolve the discrepency described above.
 Yet, I personally dont like it as it is quite brutal and takes a lot of resources. 
 But to find a better solution, we have to modify the whole NSQlookupd code to make lookupd initiate the connection, which will be really tiring.
-
-
-///////////////////////////////////////////////////////////////////////////////////////
-
-Some Big Changes !!
-Each producer object can only publish one topic.
-So if you want to publish two topics, you need to instance two producers
-
-producer1, _ := nsq.NewProducer("", config)
-producer2, _ := nsq.NewProducer("", config)
- _ = producer1.ConnectToNSQLookupd(Lookupd_Address, Topic1)
- _ = producer2.ConnectToNSQLookupd(Lookupd_Address, Topic2)
-err := producer1.Publish(Topic1, MessageBody)
-err := producer2.Publish(Topic2, MessageBody)
 
 ///////////////////////////////////////////////////////////////////////////////////////
 

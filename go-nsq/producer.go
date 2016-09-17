@@ -631,7 +631,7 @@ func (w *Producer) queryLookupd(topic string) string{
 			hostName := thisProducer.Hostname
 			myHostName,_ := os.Hostname()
 			if myHostName == hostName {
-				println("YAO: NSQd Hostname is: ", hostName)
+			//	println("YAO: NSQd Hostname is: ", hostName)
 				address = nsqdAddrs[i]
 				break
 			}
@@ -643,7 +643,7 @@ func (w *Producer) queryLookupd(topic string) string{
 		address = nsqdAddrs[0]
 	}
 	//println(data.Producers[0].BroadcastAddress)
-	println("YAO: NSQd ADDRESS is: ", address)
+	println("YAO: TOPIC:", topic, "; NSQd ADDRESS is: ", address)
 	return address
 	
 }

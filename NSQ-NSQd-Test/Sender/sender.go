@@ -53,6 +53,7 @@ func main() {
 
     for i := 0; i < producersNum; i++ {
         go producer(strconv.Itoa(i), strconv.Itoa(i), os.Args[2])
+        //go producer("0", "0", os.Args[2])
     }
 
     time.Sleep(60 * time.Second)
