@@ -5,12 +5,16 @@ producer1, _ := nsq.NewProducer("", config)
 err := producer1.ConnectToNSQLookupd(Lookupd_Address, Topic1)
 err = producer1.Publish(Topic1, MessageBody)
 
-Adminstrator Side:
+Adminstrator Side :
 //register or unregister a certain topic in lookupd as a high prio topic
 w, _ := nsq.NewProducer("", config)
 err := w.RegisterHighPriorityTopic(Lookupd Address, topicName)
 err = w.UnregisterHighPriorityTopic(Lookupd Address, topicName)
 
+The Adminstrator is not very dynamic.
+Its function is really limited and may cause potential message loss.
+It needs to be greatly improved later.
+The second and third part of "Some Defects" will talk about it in more detail.
 
 ///////////////////////////////////////////////////////////////////////////////////////
 
@@ -36,10 +40,15 @@ So, please run producer first, then consumer. For producers, just send a hello m
 2.
 When consumer is connected to the lookupd, the change of topic priority might cause messages from a previous producer get lost.
 For example:
-NSQd1 publishes a certain topic topic1. 
-Then our admin changes the priority of the topic1 during this interval
-Later NSQd2 publishes the same topic topic1.
-Then Consumer1 subscribe to the topic1. Yet it can only receive the messages from NSQd2 as NSQd1 has been labeled as inactive for that topic.
+NSQd1 is responsible for and currently publishing a certain topic topic1. 
+Then our admin changes the priority of the topic1 during this interval. So NSQd2 is responsible for the topic1.
+Later NSQd2 begins to publish the topic.
+Then Consumer1 subscribe to the topic1. Yet it can only receive the messages from NSQd2. 
+The old messages published by NSQd1 are lost.
+The reason is NSQd1 has been labeled as not responsible for that topic due to the topic priority change. 
+NSQd2 is responsible for the topic.
+Lookupd will only return the address of NSQd that is currently responsible for the topic to the consumer.
+Thats why the message from NSQd1 will be lost.
 
 So to avoid this kind of messages lost, please register or unregister topics when there are no currently ONGOING message transfer of that topic.
 
