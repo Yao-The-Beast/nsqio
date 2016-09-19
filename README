@@ -6,7 +6,7 @@ Recommended:
 Protocol v2
 Preset producer priority, and connect it to a correpsonding nsqd
 API:
-//to find a nsqd for a certain topic
+//to find a nsqd for a certain prio
 producer1, _ := nsq.NewProducer("", config)
 err := producer1.ConnectToNSQLookupd_v2(Lookupd_Address, "HIGH"/“LOW”)
 err = producer1.Publish(Topic1, MessageBody)
