@@ -439,6 +439,10 @@ func (w *Producer) SetBehaviorDelegate(cb interface{}) {
 	w.behaviorDelegate = cb
 }
 
+
+
+
+
 //yao
 func (w *Producer) ConnectToNSQLookupd(addr string, topic string) error {
 	if atomic.LoadInt32(&w.stopFlag) == 1 {
@@ -579,7 +583,15 @@ func (w *Producer) nextLookupdEndpoint(command string, data string) string {
 		v, _ := url.ParseQuery(u.RawQuery)
 		v.Add("topic",data)
 		u.RawQuery = v.Encode()
-
+	} else if command == "producer_lookup_v2" {
+		if u.Path == "/" || u.Path == "" {
+			u.Path = "/producer_lookup_v2"
+		}
+		v, _ := url.ParseQuery(u.RawQuery)
+		v.Add("priority",data)
+		hostname, _ := os.Hostname()
+		v.Add("hostname", hostname)
+		u.RawQuery = v.Encode()
 	}
 
 	return u.String()
@@ -680,4 +692,83 @@ exit:
 	}
 	w.log(LogLevelInfo, "exiting lookupdLoop")
 	w.wg.Done()
+}
+
+
+
+
+//yao
+//in this connection protocol, we dont connect to nsqds based on topics
+//but based on priority
+func (w *Producer) ConnectToNSQLookupd_v2(addr string, priority string) error {
+	if atomic.LoadInt32(&w.stopFlag) == 1 {
+		return errors.New("producer stopped")
+	}
+
+	if err := validatedLookupAddr(addr); err != nil {
+		return err
+	}
+
+	//atomic.StoreInt32(&r.connectedFlag, 1)
+
+	for _, x := range w.lookupdHTTPAddrs {
+		if x == addr {
+			return nil
+		}
+	}
+	w.lookupdHTTPAddrs = append(w.lookupdHTTPAddrs, addr)
+	numLookupd := len(w.lookupdHTTPAddrs)
+
+	// if this is the first one, kick off the go loop
+	if numLookupd == 1 {
+		w.addr = w.queryLookupd_v2(priority)
+	}
+	return nil	
+}
+
+func (w *Producer) queryLookupd_v2(priority string) string {
+	//find a nsqd with the appropriate priority
+	endpoint := w.nextLookupdEndpoint("producer_lookup_v2", priority)
+	w.log(LogLevelInfo, "querying nsqlookupd v2 %s", endpoint)
+	var data lookupResp
+	err := apiRequestNegotiateV1("GET", endpoint, nil, &data)
+	if err != nil {
+		w.log(LogLevelError, "error querying nsqlookupd (%s) - %s", endpoint, err)
+	}
+
+	var nsqdAddrs []string
+	for _, producer := range data.Producers {
+		broadcastAddress := producer.BroadcastAddress
+		port := producer.TCPPort
+		joined := net.JoinHostPort(broadcastAddress, strconv.Itoa(port))
+		nsqdAddrs = append(nsqdAddrs, joined)
+	}
+
+	if discoveryFilter, ok := w.behaviorDelegate.(DiscoveryFilter); ok {
+		nsqdAddrs = discoveryFilter.Filter(nsqdAddrs)
+	}
+
+	address := ""
+	
+	if len(nsqdAddrs) == 0 {
+		panic("NO DAEMON AVAILABLE")
+	}else {
+		i := 0
+		for _, thisProducer := range data.Producers {
+			hostName := thisProducer.Hostname
+			myHostName,_ := os.Hostname()
+			if myHostName == hostName {
+				address = nsqdAddrs[i]
+				break
+			}
+			i++
+		}	
+	}
+	if address == "" {
+		println("YAO: NO OTHER CHOICE, Randomly Pick One")
+		address = nsqdAddrs[0]
+	}
+	//println(data.Producers[0].BroadcastAddress)
+	println("YAO; NSQd ADDRESS v2 is: ", address)
+	return address
 }

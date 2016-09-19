@@ -1,10 +1,40 @@
-API Changes:
+Provide NSQd lookup for producers.
+
+Two set of protocol
+
+Recommended: 
+Protocol v2
+Preset producer priority, and connect it to a correpsonding nsqd
+API:
+//to find a nsqd for a certain topic
+producer1, _ := nsq.NewProducer("", config)
+err := producer1.ConnectToNSQLookupd_v2(Lookupd_Address, "HIGH"/“LOW”)
+err = producer1.Publish(Topic1, MessageBody)
+err = producer1.Publish(Topic2, MessageBody)
+
+Explanation:
+This protocol links the producer to the nsqd with the required priority. 
+Once connection is set up, the producer will not switch to another nsqd unless nsqd dies out.
+If nsqd dies out, the producer will get a connection error.
+This behavior is the original nsq producer behavior.
+
+Advantage:
+As long as the user doesn't misbehavior, everything should work fine.
+And the relation is neat and beautiful.
+However, if there is potential user misbehavior, there will be some performance degradation.
+
+
+
+
+
+Protocol v1
+Topic oriented protocl. Producer is hooked to nsqd based on the topic priority.
+API:
 Producer Side
 //to find a nsqd for a certain topic
 producer1, _ := nsq.NewProducer("", config)
 err := producer1.ConnectToNSQLookupd(Lookupd_Address, Topic1)
 err = producer1.Publish(Topic1, MessageBody)
-
 Adminstrator Side :
 //register or unregister a certain topic in lookupd as a high prio topic
 w, _ := nsq.NewProducer("", config)

@@ -46,3 +46,15 @@ func GetTopicPriorityArgs(rp getter) (string, error) {
 
 	return topicName, nil
 }
+
+
+//yao
+//get priority parameters
+func GetPriorityArgs(rp getter) (string, error) {
+	priorityLevel, err := rp.Get("priority")
+	if err != nil {
+		return "", errors.New("MISSING_ARG_TOPIC")
+	}
+
+	return priorityLevel, nil
+}

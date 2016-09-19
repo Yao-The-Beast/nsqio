@@ -45,8 +45,10 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/register_topic_priority", http_api.Decorate(s.doRegisterTopicPriority,log,http_api.NegotiateVersion))
 	// /unregister_topic_priority
 	router.Handle("GET", "/unregister_topic_priority", http_api.Decorate(s.doUnregisterTopicPriority,log,http_api.NegotiateVersion))	
-	//lookup for the producers
+	//lookup for the producers, based on topic
 	router.Handle("GET", "/producer_lookup", http_api.Decorate(s.doProducerLookup,log,http_api.NegotiateVersion))	
+	//lookup for the producers v2, based on specified priority
+	router.Handle("GET", "/producer_lookup_v2", http_api.Decorate(s.doProducerLookupV2,log,http_api.NegotiateVersion))	
 
 	// only v1
 	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
@@ -600,4 +602,72 @@ func findNSQds(producers Producers, priority string) (Producers) {
 		}
 	}
 	return outputProducers
+}
+
+//yao
+//find nsqd address based on the priority specifies
+//return a nsqd with appropriate nsqd address
+//but might return a random nsqd address if a speicifc kind of nsqd doesnt exist
+//eg: ask for high prio, but there is no high prio nsqd. In that case, return addresses of low prio daemons
+//Moreover, return all the addresses of specific kind of daemons and let producer decide by itself
+func (s *httpServer) doProducerLookupV2(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+
+	// dont filter out tombstoned nodes
+	producers := s.ctx.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(
+		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
+
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	priorityLevel, err := http_api.GetPriorityArgs(reqParams)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	numNSQds := 0
+	tolerantFlag := false;
+	for _, q := range producers {
+		if q.peerInfo.DaemonPriority == priorityLevel {
+			numNSQds++
+		}
+	}
+	if numNSQds == 0 {
+		tolerantFlag = true
+	}
+
+	var nodes []*node
+	for _, p := range producers {
+		if p.peerInfo.DaemonPriority != priorityLevel && tolerantFlag == false{
+			continue
+		}
+
+		topics := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys()
+		// for each topic find the producer that matches this peer
+		// to add tombstone information
+		tombstones := make([]bool, len(topics))
+		for j, t := range topics {
+			topicProducers := s.ctx.nsqlookupd.DB.FindProducers("topic", t, "")
+			for _, tp := range topicProducers {
+				if tp.peerInfo == p.peerInfo {
+					tombstones[j] = tp.IsTombstoned(s.ctx.nsqlookupd.opts.TombstoneLifetime)
+				}
+			}
+		}
+
+		nodes = append(nodes, &node{
+			RemoteAddress:    p.peerInfo.RemoteAddress,
+			Hostname:         p.peerInfo.Hostname,
+			BroadcastAddress: p.peerInfo.BroadcastAddress,
+			TCPPort:          p.peerInfo.TCPPort,
+			HTTPPort:         p.peerInfo.HTTPPort,
+			Version:          p.peerInfo.Version,
+			Tombstones:       tombstones,
+			Topics:           topics,
+		})
+	}
+
+	return map[string]interface{}{
+		"producers": nodes,
+	}, nil
 }

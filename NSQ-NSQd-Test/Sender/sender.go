@@ -1,7 +1,7 @@
 package main
 
 import (
-  "log"
+  //"log"
   "github.com/nsqio/go-nsq"
   "os"
   "time"
@@ -13,15 +13,25 @@ func producer(topic string, channel string, flag string) {
     messageSize := 1000
     messageNum := 1000
 
+    
+    config := nsq.NewConfig()
+    w, _ := nsq.NewProducer("", config)
+
+    tmp, _ := strconv.Atoi(topic)
+    priority := ""
+    if tmp < 3{
+        priority = "HIGH"
+    }else{
+        priority = "LOW"
+    }
+     _ = w.ConnectToNSQLookupd_v2("127.0.0.1:4161",priority)
+
+     //_ = w.ConnectToNSQLookupd("127.0.0.1:4161",topic)
+
     if flag == "ephemeral" {
         topic += "#ephemeral"
         channel += "#ephemeral"
     }
-    
-    config := nsq.NewConfig()
-    w, _ := nsq.NewProducer("", config)
-    _ = w.ConnectToNSQLookupd("127.0.0.1:4161",topic)
-
     
 
     //hello message
@@ -34,13 +44,16 @@ func producer(topic string, channel string, flag string) {
     for i < messageNum {
         b = make([]byte, messageSize)
         binary.PutVarint(b, time.Now().UnixNano())
-        //publish
+        //err = w.PublishAsync("SUPER" + topic, b, nil)
+
         err := w.PublishAsync(topic, b ,nil)
-  	
+
+        if err != nil {
+            panic("CONNECTION ERROR")
+        }
+
         time.Sleep(10 * time.Millisecond)
-	    if err != nil {
-      		log.Panic("Could not connect")
-  	    }
+
  	    i = i + 1
     }
     w.Stop()
