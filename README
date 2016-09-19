@@ -1,6 +1,9 @@
 Provide NSQd lookup for producers.
 
-Two set of protocol
+Jump to the last part to understand how to use the test files and bootup nsqds.
+Read protocol_v2 documentation (which is right below). protocol_v2 is the recommended protocol.
+
+Two sets of protocols
 
 Recommended: 
 Protocol v2
@@ -8,7 +11,7 @@ Preset producer priority, and connect it to a correpsonding nsqd
 API:
 //to find a nsqd for a certain prio
 producer1, _ := nsq.NewProducer("", config)
-err := producer1.ConnectToNSQLookupd_v2(Lookupd_Address, "HIGH"/“LOW”)
+err := producer1.ConnectToNSQLookupd_v2(Lookupd_Address, ProducerPriorityLevel:"HIGH"/“LOW”)
 err = producer1.Publish(Topic1, MessageBody)
 err = producer1.Publish(Topic2, MessageBody)
 
@@ -23,7 +26,10 @@ As long as the user doesn't misbehavior, everything should work fine.
 And the relation is neat and beautiful.
 However, if there is potential user misbehavior, there will be some performance degradation.
 
-
+WARNING:
+Don't use protocol_v1 and admin_register/admin_unregister with protocol_v2.
+Things will become nasty if these two protocols are mingled together.
+Set Broadcast-address in the nsqd.sh file to the IP address the nsqd will be serving on.
 
 
 
@@ -109,22 +115,17 @@ For nsq folder: make && make install to generate executable for nsqd & nsqlookup
 In nsq/build, run lookupd.sh to boot up lookupd.
 In nsq/build, there are several folders, including nsqd_high, nsqd_low, etc.
 Copy the nsqd executable into these folders. 
-Inside nsqd_high, nsqd_low folders, nsqd.sh is used to boot up nsqds of different priorities. 
-WARNING!!!!!!!!
 Broadcast-address parameter in nsqd.sh must be set to the ip address the nsqd is listening to.
-WARNING END!!!!!!
 
 
 For NSQ-NSQd-Test folder, the files in there are for test purpose.
 Receiver and Sender folders contain producer and consumer
-go run receiver.go NUMBER_OF_TOPICS ephemeral/""
-go run sender.go NUMBER_OF_TOPICS ephemeral/""
+go run receiver.go NUMBER_OF_TOPICS ephemeral/idk
+go run sender.go NUMBER_OF_TOPICS ephemeral/idk
 All producer and consumers should connect to the same lookupd
 Please configure the address of lookupd correctly in both producer/consumer code.
-WARNING!!!
-Run sender.go FIRST, then run receiver.go 
-WARNING END!!!!!!!
-The REASON is that consumer is going to panic when it realizes that there is no NSQd currently serving the topic.
+WARNING!!!      Run sender.go FIRST, then run receiver.go       WARNING END!!!!!!!
+The reason is that consumer is going to panic when it realizes that there is no NSQd currently serving the topic.
 By making producer sends out a hello msg first, the Lookupd will return the address of the responsible nsqd to the consumer.
 The receiver will stop after receiving 1,000 msgs from the producers and output a latency file.
 
